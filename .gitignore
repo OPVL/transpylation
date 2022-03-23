@@ -3,3 +3,5 @@ env
 src
 app
 i18n
+track
+*.log
