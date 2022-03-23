@@ -53,12 +53,16 @@ class Config():
         return self._to_list(data)
 
 
-bcolors = {
-    'INFO':  '\033[94m',  # OKBLUE
-    'DEBUG':  '\033[96m',  # OKCYAN
-    'WARNING': '\033[93m',  # WARNING
-    'ERROR': '\033[91m',  # FAIL
-    'CRITICAL': '\033[0m',   # ENDC
+console_colours = {
+    'purple': '\033[95m',
+    'blue': '\033[94m',
+    'cyan': '\033[96m',
+    'green': '\033[92m',
+    'yellow': '\033[93m',
+    'red': '\033[91m',
+    'bold': '\033[1m',
+    'underline': '\033[4m',
+    'endcolour': '\033[0m',
 }
 
 _config = Config('scraper.ini')
@@ -68,17 +72,15 @@ with open('i18n/en-us.json', 'r') as raw_json_file:
     raw_json_file.close()
 
 
-def log(level: int, message: str, data=None):
-    logtofile(level, message, data)
+def level_to_colour(level: int) -> str:
+    if level < 30:
+        return ''
 
-    config_log_level = _config.get('application.LogLevel', 'error', toUpper)
-    log_level = logging._nameToLevel[config_log_level]
-    level_name = logging.getLevelName(level)
+    if level == logging.WARN:
+        return console_colours.get('yellow')
 
-    if log_level > level:
-        return
-
-    print(f'{bcolors[level_name]}{level_name}: {message}\r')
+    if level >= logging.ERROR:
+        return console_colours.get('red')
 
 
 def logtofile(level: int, message: str, data=None):
@@ -98,26 +100,37 @@ def logtofile(level: int, message: str, data=None):
         f'[{datetime.now().strftime("%m/%d/%Y|%H:%M:%S")}|{logging.getLevelName(level)}]: {message}\n')
 
 
+def log(message: str, level: int = None, data=None, colour: str = None):
+
+    level = level or logging.DEBUG
+    logtofile(message=message, level=level, data=data)
+
+    config_log_level = _config.get('application.LogLevel', 'error', toUpper)
+    log_level = logging._nameToLevel[config_log_level]
+    level_name = logging.getLevelName(level)
+
+    if log_level > level:
+        return
+
+    print(
+        f"{console_colours.get(colour, None) or level_to_colour(level)}{level_name}: {message}{console_colours['endcolour']}\r")
+
+
 def should_ignore_file(file: str) -> bool:
     try:
         file_extension = file.split('.')[1]
     except IndexError:
-        log(logging.WARNING, f'file without extension: {file}')
+        log(f'file without extension: {file}', level=logging.WARNING)
         return True
 
     if _config.get_list('filesystem.SearchedFileExtensions').count(file_extension) <= 0:
-        log(logging.DEBUG,
-            f'file: {file} extension not allowed: {file_extension}')
+        log(f'file: {file} extension not allowed: {file_extension}')
         return True
 
     for ignored in _config.get_list('filesystem.IgnoreFilePatterns'):
-        # log(logging.ERROR, f'{file}, {ignored}')
-        # return
-
         match = re.search(ignored, file)
         if match:
-            log(logging.DEBUG,
-                f'file: {file} disallowed pattern {match.string}')
+            log(f'file: {file} disallowed pattern {match.string}')
             return True
 
     return False
@@ -127,101 +140,63 @@ def should_ignore_folder(path: str) -> bool:
     for ignored in _config.get_list('filesystem.IgnoreFolderPatterns'):
         match = re.search(ignored, path)
         if match:
-            log(logging.DEBUG,
-                f'path: {path} matched disallowed pattern {match.string}')
+            log(f'path: {path} matched disallowed pattern {match.string}')
             return True
 
     return False
 
 
-def config_option(fullname: str, default=None, format=None):
-    config = configparser.ConfigParser()
-    section, option = fullname.split('.')
-    config.read('scraper.ini')
+def does_file_contain(searching_for, file, root):
+    size = os.path.getsize(f'{root}/{file}')
+    config_size = _config.get('filesystem.SizeThreshold', 1024, int)
+    log(f'{file} size is {size}')
 
-    data = config.get(section=section, option=option, fallback=default)
+    if size > config_size:
+        log(f'{file} size: {size} larger than threshold {config_size}')
+        # return search_file_by_line(file, searching_for)
 
-    if not format:
-        return data
+    target_file = open(f'{root}/{file}', 'r')
 
-    return format(data)
+    found = searching_for in target_file.read()
+
+    if found:
+        log(f'found {searching_for} in {file}')
+        return True
+    
+    return False
 
 
-def load_config(config_file: str = None) -> None:
-
-    config = configparser.ConfigParser()
-    config.read(config_file or 'scraper.ini')
-
-    config_delimiter = config.get('application', 'ConfigDelimiter')
-
-    target_folders = config.get(
-        section='filesystem',
-        option='SearchedFolders'
-    ).split(config_delimiter)
-
-    target_extensions = config.get(
-        section='filesystem',
-        option='SearchedFileExtensions'
-    ).split(config_delimiter)
-
-    ignore_folder_patterns = config.get(
-        section='filesystem',
-        option='IgnoreFolderPatterns'
-    ).split(config_delimiter)
-
-    ignore_file_patterns = config.get(
-        section='filesystem',
-        option='IgnoreFilePatterns'
-    ).split(config_delimiter)
+def search_file_by_line(file, search):
+    return False
 
 
 def main():
+
+    print(does_file_contain('fuck', 'campaign_ids.py', 'app/src/constants'))
+
+    found = {}
     for directory in _config.get_list('filesystem.SearchedFolders'):
-        log(logging.DEBUG, f'walking dir: {directory}')
+        log(f'walking dir: {directory}')
         for root, dirs, files in os.walk(top=directory):
-            log(logging.DEBUG, f'inside dir: {root}')
+            log(f'inside dir: {root}')
             path = root.split(os.sep)
 
             if should_ignore_folder(root):
-                log(logging.INFO, f'skipping folder: {root}')
+                log(f'skipping folder: {root}', level=logging.INFO)
                 continue
 
             for file in files:
                 if should_ignore_file(file):
-                    log(logging.INFO, f'skipping file: {root}/{file}')
+                    log(f'skipping file: {root}/{file}', level=logging.INFO)
                     continue
 
-                with open(f'{root}/{file}') as target_file:
-                    for translation_ref in translation_json.keys():
-                        if translation_ref in target_file.read():
-                            log(logging.INFO,
-                                f'found {translation_ref} in {root}/{file}')
-                            del translation_json[translation_ref]
-        # print(file)
+                for translation_ref in translation_json.keys():
+                    if found.get(translation_ref):
+                        continue
 
-    # print(translation_json)
-    return
+                    if does_file_contain(translation_ref, file, root):
+                        found[translation_ref] = translation_json[translation_ref]
 
-    output = os.walk('src')
-
-    for root, dirs, files in output:
-        print({'root': root, 'directory': dirs, 'files': files})
-
-    return
-    # traverse root directory, and list directories as dirs and files as files
-    for root, dirs, files in os.walk("."):
-        print({'root': root, 'directory': dirs, 'files': files})
-
-        # path = root.split(os.sep)
-        # print path
-        # if excluded_folders.count(os.path.basename(root).lower()) > 0:
-        #     continue
-        print(os.path.basename(root))
-        # print((len(path) - 1) * '---', os.path.basename(root))
-        for file in files:
-            continue
-            print(len(path) * '---', file)
-
-
+    print(found)
 if __name__ == '__main__':
     main()
