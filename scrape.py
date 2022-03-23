@@ -162,7 +162,7 @@ def does_file_contain(searching_for, file, root):
     if found:
         log(f'found {searching_for} in {file}')
         return True
-    
+
     return False
 
 
@@ -171,8 +171,6 @@ def search_file_by_line(file, search):
 
 
 def main():
-
-    print(does_file_contain('fuck', 'campaign_ids.py', 'app/src/constants'))
 
     found = {}
     for directory in _config.get_list('filesystem.SearchedFolders'):
@@ -197,6 +195,8 @@ def main():
                     if does_file_contain(translation_ref, file, root):
                         found[translation_ref] = translation_json[translation_ref]
 
-    print(found)
+    print(list(set(translation_json) - set(found)))
+
+
 if __name__ == '__main__':
     main()
