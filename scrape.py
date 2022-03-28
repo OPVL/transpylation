@@ -97,7 +97,7 @@ def logtofile(level: int, message: str, data=None):
     logfile = open(_config.get('application.LogFile',
                    f'{_filename_from_file()}.log'), 'a')
     logfile.write(
-        f'[{datetime.now().strftime("%m/%d/%Y|%H:%M:%S")}|{logging.getLevelName(level)}]: {message}\n')
+        f'[{datetime.now().strftime("%m/%d/%Y|%H:%M:%S")}|{logging.getLevelName(level)}]: {message} {data}\n')
 
 
 def log(message: str, level: int = None, data=None, colour: str = None):
@@ -195,7 +195,13 @@ def main():
                     if does_file_contain(translation_ref, file, root):
                         found[translation_ref] = translation_json[translation_ref]
 
-    print(list(set(translation_json) - set(found)))
+    diff = list(set(translation_json) - set(found))
+    log(f'found {len(diff)} unused translations',
+        level=logging.INFO, data=diff)
+
+    outfile = open('unused.json', 'w')
+    outfile.write(json.dumps(diff))
+    outfile.close()
 
 
 if __name__ == '__main__':
