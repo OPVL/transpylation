@@ -1,9 +1,14 @@
 import configparser
 from datetime import datetime
+from io import TextIOWrapper
 import json
 import logging
+import math
 import os
 import re
+
+logging.SUCCESS = logging.CRITICAL + 10
+logging.addLevelName(logging.SUCCESS, 'SUCCESS')
 
 
 def _filename_from_file() -> str:
@@ -12,6 +17,16 @@ def _filename_from_file() -> str:
 
 def toUpper(string: str):
     return string.upper()
+
+
+def human_size(size_bytes: int):
+    if size_bytes == 0:
+        return "0B"
+    size_name = ("B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB")
+    i = int(math.floor(math.log(size_bytes, 1024)))
+    power = math.pow(1024, i)
+    size = round(size_bytes / power, 2)
+    return f"{size} {size_name[i]}"
 
 
 class Config():
@@ -79,6 +94,9 @@ def level_to_colour(level: int) -> str:
     if level == logging.WARN:
         return console_colours.get('yellow')
 
+    if level == logging.SUCCESS:
+        return console_colours.get('green')
+
     if level >= logging.ERROR:
         return console_colours.get('red')
 
@@ -96,8 +114,7 @@ def logtofile(level: int, message: str, data=None):
 
     logfile = open(_config.get('application.LogFile',
                    f'{_filename_from_file()}.log'), 'a')
-    logfile.write(
-        f'[{datetime.now().strftime("%m/%d/%Y|%H:%M:%S")}|{logging.getLevelName(level)}]: {message} {data}\n')
+    logfile.write(f'[{datetime.now().strftime("%m/%d/%Y|%H:%M:%S")}|{logging.getLevelName(level)}]: {message} {data or ""}\n')
 
 
 def log(message: str, level: int = None, data=None, colour: str = None):
@@ -146,31 +163,61 @@ def should_ignore_folder(path: str) -> bool:
     return False
 
 
-def does_file_contain(searching_for, file, root):
+def is_file_large(file: str, root: str):
     size = os.path.getsize(f'{root}/{file}')
-    config_size = _config.get('filesystem.SizeThreshold', 1024, int)
-    log(f'{file} size is {size}')
-
-    if size > config_size:
-        log(f'{file} size: {size} larger than threshold {config_size}')
-        # return search_file_by_line(file, searching_for)
+    config_size = _config.get('filesystem.SizeThreshold', 10240, int)
 
     target_file = open(f'{root}/{file}', 'r')
-
-    found = searching_for in target_file.read()
-
-    if found:
-        log(f'found {searching_for} in {file}')
+    if size > config_size:
+        log(f'{file} size: {human_size(size)} larger than threshold {human_size(config_size)}')
         return True
 
     return False
 
 
-def search_file_by_line(file, search):
+def search_file(searching_for: str, file: str, root: str) -> bool:
+    target_file = open(f'{root}/{file}', 'r')
+    found = searching_for in target_file.read()
+
+    if found:
+        log(f'found {searching_for} in {file}', level=logging.INFO)
+        return True
+
     return False
 
 
-def main():
+def search_file_by_line(searching_for: str, file: str, root: str) -> bool:
+    linecount = 1
+    target_file = open(f'{root}/{file}', 'r')
+
+    for line in target_file.readlines():
+        if searching_for in line:
+            log(f'found {searching_for} in {file} on line {linecount}', level=logging.INFO)
+            return True
+        linecount += 1
+    return False
+
+
+def display_results(results: list, tranlation_filename: str):
+    if _config.get('output.WriteToFile', format=bool):
+        outfile = open(_config.get('output.OutFile', 'unused.json'), 'w')
+        outfile.write(json.dumps(results))
+        outfile.close()
+
+    if _config.get('output.WriteToConsole', format=bool):
+        if len(results) > 1:
+            return
+
+        log(f'found {len(results)} unused translations in {tranlation_filename}',
+            level=logging.SUCCESS, data=result)
+        for result in results.keys():
+            print(result)
+
+
+def search_for_translations(translation_file: str) -> dict:
+    i18n = open(translation_file, 'r')
+    translation_json = json.load(i18n)
+    i18n.close()
 
     found = {}
     for directory in _config.get_list('filesystem.SearchedFolders'):
@@ -180,24 +227,38 @@ def main():
             path = root.split(os.sep)
 
             if should_ignore_folder(root):
-                log(f'skipping folder: {root}', level=logging.INFO)
+                log(f'skipping folder: {root}')
                 continue
 
             for file in files:
                 if should_ignore_file(file):
-                    log(f'skipping file: {root}/{file}', level=logging.INFO)
+                    log(f'skipping file: {root}/{file}')
                     continue
+
+                large_file = is_file_large(file, root)
 
                 for translation_ref in translation_json.keys():
                     if found.get(translation_ref):
+                        log(f'skipping found translation: {translation_ref}')
                         continue
 
-                    if does_file_contain(translation_ref, file, root):
-                        found[translation_ref] = translation_json[translation_ref]
+                    if large_file:
+                        success = search_file(translation_ref, file, root)
+                    else:
+                        success = search_file_by_line(translation_ref, file, root)
 
+                    if success:
+                        found[translation_ref] = translation_json[translation_ref]
+    display_results(found, translation_file)
+    return found
+
+
+def main():
+
+    found = search_for_translations('i18n/en-us.json')
     diff = list(set(translation_json) - set(found))
     log(f'found {len(diff)} unused translations',
-        level=logging.INFO, data=diff)
+        level=logging.SUCCESS, data=diff)
 
     outfile = open('unused.json', 'w')
     outfile.write(json.dumps(diff))
