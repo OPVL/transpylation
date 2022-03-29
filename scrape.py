@@ -184,9 +184,28 @@ def is_file_large(file: str, root: str):
     return False
 
 
+problematic_by_line = {
+    'example.js': [0]
+}
+
+problematic = {
+    'example.html': True
+}
+
+
 def search_file(searching_for: str, file: str, root: str) -> bool:
+    if problematic.get(f'{root}/{file}'):
+        log('skipping line to avoid unicode error', level=logging.DEBUG, data={
+            "search": searching_for, "file": file})
+        return False
+
     target_file = open(f'{root}/{file}', 'r')
-    found = searching_for in target_file.read()
+    try:
+        found = searching_for in target_file.read()
+    except UnicodeDecodeError:
+        log('unicode error', level=logging.WARN, data={"search": searching_for, "file": file})
+        problematic[f'{root}/{file}'] = searching_for
+        return False
 
     if found:
         log(f'found {searching_for} in {file}', level=logging.INFO)
@@ -196,14 +215,25 @@ def search_file(searching_for: str, file: str, root: str) -> bool:
 
 
 def search_file_by_line(searching_for: str, file: str, root: str) -> bool:
-    linecount = 1
+    linecount = 0
     target_file = open(f'{root}/{file}', 'r')
 
     for line in target_file.readlines():
-        if searching_for in line:
-            log(f'found {searching_for} in {file} on line {linecount}', level=logging.INFO)
-            return True
         linecount += 1
+
+        if problematic_by_line.get(f'{file}|{linecount}'):
+            log('skipping line to avoid unicode error', level=logging.DEBUG, data={
+                "search": searching_for, "file": file, "line": linecount, 'query': f'{file}|{linecount}'})
+            continue
+
+        try:
+            if searching_for in line:
+                log(f'found {searching_for} in {file} on line {linecount}', level=logging.INFO)
+                return True
+        except UnicodeDecodeError:
+            log('unicode error', level=logging.WARN, data={"search": searching_for, "file": file, "line": linecount})
+            problematic_by_line[f'{file}|{linecount}'] = searching_for
+            continue
     return False
 
 
@@ -215,6 +245,7 @@ def display_results(results: list, tranlation_filename: str):
 
     if _config.get_bool('output.WriteToConsole'):
         if len(results) < 1:
+            log(f'no unused translations in {tranlation_filename}', level=logging.SUCCESS)
             return
 
         log(f'found {len(results)} unused translations in {tranlation_filename}',
