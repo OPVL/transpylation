@@ -211,8 +211,8 @@ def search_file_by_line(searching_for: str, file: str, root: str) -> bool:
 
 def display_results(results: list, tranlation_filename: str):
     if _config.get_bool('output.WriteToFile'):
-        outfile = open(_config.get('output.OutFile', 'unused.json'), 'w')
-        outfile.write(json.dumps(results))
+        outfile = open(f"{tranlation_filename.split('.')[0]}-{_config.get('output.OutFile', 'unused')}.json", 'w')
+        json.dump(results, outfile)
         outfile.close()
 
     if _config.get_bool('output.WriteToConsole'):

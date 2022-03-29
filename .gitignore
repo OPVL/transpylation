@@ -75,3 +75,4 @@ webpack.common.js
 .jshintrc
 .nvmrc
 .python-version
+useless.json
