@@ -1,6 +1,5 @@
 import configparser
 from datetime import datetime
-from io import TextIOWrapper
 import json
 import logging
 import math
@@ -148,7 +147,7 @@ def should_ignore_file(file: str) -> bool:
     try:
         file_extension = file.split('.')[1]
     except IndexError:
-        log(f'file without extension: {file}', level=logging.WARNING)
+        log(f'file without extension: {file}')
         return True
 
     if _config.get_list('filesystem.SearchedFileExtensions').count(file_extension) <= 0:
@@ -178,7 +177,6 @@ def is_file_large(file: str, root: str):
     size = os.path.getsize(f'{root}/{file}')
     config_size = _config.get('filesystem.SizeThreshold', 10240, int)
 
-    target_file = open(f'{root}/{file}', 'r')
     if size > config_size:
         log(f'{file} size: {human_size(size)} larger than threshold {human_size(config_size)}')
         return True
@@ -239,7 +237,6 @@ def search_for_translations(translation_file: str) -> dict:
         log(f'walking dir: {directory}')
         for root, dirs, files in os.walk(top=directory):
             log(f'inside dir: {root}')
-            path = root.split(os.sep)
 
             if should_ignore_folder(root):
                 log(f'skipping folder: {root}')
