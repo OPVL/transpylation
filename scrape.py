@@ -269,8 +269,8 @@ def search_for_translations(translation_file: str) -> dict:
     return found
 
 
-def is_json(filename: str) -> bool:
-    return filename.endswith('.json')
+def is_valid(filename: str) -> bool:
+    return filename.endswith('.json') and not _config.get('output.OutFile') in filename
 
 
 def update_translation_file(file: str, update: dict):
@@ -297,7 +297,7 @@ def main():
             translations = list(
                 map(
                     lambda file: f'{_config.get("application.TranslationDir")}/{file}',
-                    filter(is_json, files))
+                    filter(is_valid, files))
             )
     else:
         translations = [_config.get('application.TranslationFile')]
