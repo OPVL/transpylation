@@ -28,3 +28,6 @@ in this video it is evaluating ~230 translation strings in 5 languages in a code
 it takes around 2 minutes to completely evaluate all translation files (not making changes)
 
 [![IMAGE ALT TEXT](http://img.youtube.com/vi/cVXKPRFz5J8/0.jpg)](https://www.youtube.com/watch?v=cVXKPRFz5J8 "Python translation tool")
+
+running in debug is a lot slower. same exact pass but we're slamming the log buffer
+[![IMAGE ALT TEXT](http://img.youtube.com/vi/f2EwO0z8otw/0.jpg)](https://youtu.be/f2EwO0z8otw "Python translation tool [debug mode]")
