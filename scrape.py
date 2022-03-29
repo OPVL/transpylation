@@ -29,6 +29,10 @@ def human_size(size_bytes: int):
     return f"{size} {size_name[i]}"
 
 
+def alphabetise_dict(input: dict) -> dict:
+    return dict(sorted(input.items(), key=lambda x: x[0].lower()))
+
+
 class Config():
     def __init__(self, config_file=None) -> None:
         self.config = configparser.ConfigParser()
@@ -56,6 +60,17 @@ class Config():
 
         return data if not format else format(data)
 
+    def get_bool(self, full_option: str, default=None):
+        section, option = full_option.split('.')
+
+        data = self.config.getboolean(
+            section=section,
+            option=option,
+            fallback=default
+        )
+
+        return data
+
     def get_list(self, full_option: str, default=None) -> list:
         section, option = full_option.split('.')
 
@@ -81,10 +96,6 @@ console_colours = {
 }
 
 _config = Config('scraper.ini')
-
-with open('i18n/en-us.json', 'r') as raw_json_file:
-    translation_json = json.load(raw_json_file)
-    raw_json_file.close()
 
 
 def level_to_colour(level: int) -> str:
@@ -199,27 +210,31 @@ def search_file_by_line(searching_for: str, file: str, root: str) -> bool:
 
 
 def display_results(results: list, tranlation_filename: str):
-    if _config.get('output.WriteToFile', format=bool):
+    if _config.get_bool('output.WriteToFile'):
         outfile = open(_config.get('output.OutFile', 'unused.json'), 'w')
         outfile.write(json.dumps(results))
         outfile.close()
 
-    if _config.get('output.WriteToConsole', format=bool):
-        if len(results) > 1:
+    if _config.get_bool('output.WriteToConsole'):
+        if len(results) < 1:
             return
 
         log(f'found {len(results)} unused translations in {tranlation_filename}',
-            level=logging.SUCCESS, data=result)
-        for result in results.keys():
-            print(result)
+            level=logging.SUCCESS, data=results)
 
 
-def search_for_translations(translation_file: str) -> dict:
+def load_translation(translation_file: str) -> dict:
     i18n = open(translation_file, 'r')
     translation_json = json.load(i18n)
     i18n.close()
 
+    return translation_json
+
+
+def search_for_translations(translation_file: str) -> dict:
     found = {}
+    translation_json = load_translation(translation_file)
+
     for directory in _config.get_list('filesystem.SearchedFolders'):
         log(f'walking dir: {directory}')
         for root, dirs, files in os.walk(top=directory):
@@ -249,20 +264,49 @@ def search_for_translations(translation_file: str) -> dict:
 
                     if success:
                         found[translation_ref] = translation_json[translation_ref]
-    display_results(found, translation_file)
+    diff = list(set(translation_json) - set(found))
+    display_results(diff, translation_file)
     return found
+
+
+def is_json(filename: str) -> bool:
+    return filename.endswith('.json')
+
+
+def update_translation_file(file: str, update: dict):
+    log(f'updating translation file {file}')
+    if _config.get_bool('output.MakeBackups'):
+        log(f'making backup {file}.bak')
+        t_file = open(file, 'r')
+        contents = json.load(t_file)
+        t_file.close()
+
+        backup = open(f'{file}.bak', 'w')
+        json.dump(alphabetise_dict(contents), backup)
+        backup.close()
+
+    out_trans_file = open(file, 'w')
+    json.dump(alphabetise_dict(update), out_trans_file)
+    out_trans_file.close()
 
 
 def main():
 
-    found = search_for_translations('i18n/en-us.json')
-    diff = list(set(translation_json) - set(found))
-    log(f'found {len(diff)} unused translations',
-        level=logging.SUCCESS, data=diff)
+    if _config.get_bool('application.UseDirectory'):
+        for root, dirs, files in os.walk(_config.get('application.TranslationDir')):
+            translations = list(
+                map(
+                    lambda file: f'{_config.get("application.TranslationDir")}/{file}',
+                    filter(is_json, files))
+            )
+    else:
+        translations = [_config.get('application.TranslationFile')]
 
-    outfile = open('unused.json', 'w')
-    outfile.write(json.dumps(diff))
-    outfile.close()
+    for translation_file in translations:
+        log(f'searching file: {translation_file}', level=logging.INFO)
+        result = search_for_translations(translation_file)
+        if _config.get_bool('output.UpdateTranslation'):
+            update_translation_file(translation_file, result)
 
 
 if __name__ == '__main__':
