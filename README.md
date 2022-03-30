@@ -1,16 +1,16 @@
 # transpylation
-a very shit but effective tool for finding unused translations inside a codebase
 
+a very shit but effective tool for finding unused translations inside a codebase
 
 ## requirements
 
-* python 3.6+
-* pip
-
+- python 3.6+
+- pip
 
 ## usage
+
 1. clone or copy the scrape.py in to the root of your project directory
-2. adjust the settings in scrape.ini 
+2. adjust the settings in scrape.ini
 3. run the program
 
 all translation files must be in valid JSON format. it's not clever enough to work with anything else
@@ -24,6 +24,7 @@ parse commandline arguments
 support for different configs
 
 ### tool in action
+
 in this video it is evaluating ~230 translation strings in 5 languages in a codebase of around ~500 files
 it takes around 2 minutes to completely evaluate all translation files (not making changes)
 
